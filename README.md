@@ -1,7 +1,6 @@
 # A Shiny App for predicting readmisson for dehydration following creation of a diverting loop ileostomy
 
-This is the code for the [dehydration prediction Shiny App](https://kaiqiong.shinyapps.io/dehydration_app/) I built.
-
+This is the code for the [prediction Shiny App](https://kaiqiong.shinyapps.io/dehydration_app/) I built.
 
 # Learn more
 
