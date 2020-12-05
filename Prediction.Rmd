@@ -1,0 +1,253 @@
+---
+title: "Final Prediction Model"
+author: "by Kaiqiong Zhao"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: false
+    number_sections: true
+    toc_depth: 4
+    keep_md: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 11, fig.height = 8) 
+```
+
+
+```{r, echo=FALSE, results='hide', fig.keep='none'}
+library(pROC)
+library('scales')
+library(ggeffects)
+
+source(file.path("~/scratch/GREENWOOD_SCRATCH/kaiqiong.zhao/Projects/Safiya-trend", "Scripts/packages.R"))
+load("/mnt/GREENWOOD_JBOD1/GREENWOOD_SCRATCH/kaiqiong.zhao/Projects/Mohammed-NSQIP-split-test/Data/NSQIP_final.RData")
+
+options(digits = 4, scipen = 2)
+#trop <- RSkittleBrewer::RSkittleBrewer("trop")
+trop <- c("darkorange", "dodgerblue", "hotpink"  ,  "limegreen" , "yellow")
+```
+
+
+
+
+# Final Prediction Model
+
+
+The following 12 varialbes were used in our prediction model.
+
+```{r}
+covs_use <- c("Age","DIABETES","Elective_Surgery", "Hypertension_On_Medication","SEX"     , "SMOKing","Length_Of_Stay", "Major_Morbidity", "Disease","Resection", "Operative_Time"   , "ASA_Class"  ) 
+
+covs_use
+```
+
+
+
+The model has the form
+
+```{r}
+fmla_19 <- All_Readmissions_Our_Outcome ~ ASA_Class + DIABETES +  
+  Elective_Surgery +  Hypertension_On_Medication + 
+  SEX + SMOKing +   Major_Morbidity + Disease + Resection + Age + Operative_Time + Length_Of_Stay  + I(Length_Of_Stay^2) + I(Operative_Time^2) +
+  Age:Resection +Hypertension_On_Medication:Elective_Surgery +  Length_Of_Stay:Major_Morbidity+ Length_Of_Stay:Disease
+
+fmla_19
+```
+
+
+
+
+```{r}
+#dat_use <- data.frame(rbind(train_dat, vali_dat))
+dat_use <- train_dat
+glm3 <- glm(fmla_19 , data = dat_use, family ="quasibinomial")
+
+#saveRDS(glm3, file = 'Pred_Model.rds' )
+```
+
+
+## Model equation
+
+```{r}
+#summary(glm3)
+
+Vars <- names(glm3$coefficients); Vars[1] <-""
+Coefs <- round(glm3$coefficients, 3)
+
+Terms <- rep(NA, length(Vars))
+
+for ( i in 1:length(Vars)){
+  Terms[i] <- paste(Vars[i], ' X ', Coefs[i])
+}
+```
+
+```{r}
+pander::pander(summary(glm3)$coefficients, split.table = Inf)
+```
+
+## ORs for the predictors
+
+```{r,fig.width = 9, fig.height = 10}
+#glm3 <- glm(fmla_19 , data = train_dat, family ="quasibinomial")
+sjPlot::sjp.glm(glm3)
+```
+
+```{r, results='asis'}
+sjPlot::sjt.glm(glm3)
+```
+
+
+
+## The shapes of the relationship between readmision and age, Length of Stay and Operative time.
+
+
+```{r}
+dat.use <- dat_use[, covs_use]
+
+
+inv_logit <- function(x){exp(x)/(1+exp(x))}
+age_grid <- seq(19, 89, 1)
+
+new_data <- dat.use[ 1:length(age_grid),]
+covariate_use <- covs_use
+for ( i in covariate_use){new_data[, which(colnames(new_data)==i)] <- new_data[1, which(colnames(new_data)==i)]}
+new_data$Age <- age_grid
+```
+
+
+The following three plots display the predictions of a patient with the following profile, as the values of  age, length of stay and operation time change. 
+
+
+```{r}
+rownames(new_data) = NULL
+new_data[1, which(colnames(new_data)%in%covariate_use)]
+```
+
+### Shape of the effect of age on readmission 
+
+```{r, eval = F}
+plot(age_grid, predict(glm3, newdata = new_data, type ="response"), 
+    xlab = "Age", ylab ="Risk of readmission", type ="l")
+```
+
+```{r ,fig.width = 7, fig.height = 7}
+# alternative prediction plot
+pp= predict(glm3, newdata = new_data, se.fit=T)
+pre <- pp$fit
+pre.low <- pp$fit - 1.96*pp$se.fit
+pre.high <- pp$fit + 1.96*pp$se.fit
+
+
+out <- data.frame(Age= age_grid, Pred=inv_logit(pre), pre.low=inv_logit(pre.low), pre.high=inv_logit(pre.high) )
+
+ggplot(out, aes(x=Age)) + 
+  geom_line(aes(y=Pred), colour="steelblue") + 
+  geom_ribbon(aes(ymin=(pre.low), ymax=(pre.high)), alpha = 0.2, fill ="steelblue" ) +
+   labs(x="Age" , y = "Risk of readmission")
+```
+
+### Shape of the effect of Length of Stay on readmission
+
+```{r}
+los_grid <- seq(0, 60, 0.1)
+
+new_data <- dat.use[ 1:length(los_grid),]
+
+for ( i in covariate_use){new_data[, which(colnames(new_data)==i)] <- new_data[1, which(colnames(new_data)==i)]}
+new_data$Length_Of_Stay <- los_grid
+#plot(los_grid, predict(glm3, newdata = new_data, type ="response"), 
+#     xlab = "Length of Stay", ylab ="Risk of readmission", type ="l")
+
+```
+
+```{r ,fig.width = 7, fig.height = 7}
+# alternative prediction plot
+pp= predict(glm3, newdata = new_data, se.fit=T)
+pre <- pp$fit
+pre.low <- pp$fit - 1.96*pp$se.fit
+pre.high <- pp$fit + 1.96*pp$se.fit
+
+out <- data.frame(los= los_grid, Pred=inv_logit(pre), pre.low=inv_logit(pre.low), pre.high=inv_logit(pre.high) )
+
+ggplot(out, aes(x=los)) + 
+  geom_line(aes(y=Pred), colour="steelblue") + 
+  geom_ribbon(aes(ymin=(pre.low), ymax=(pre.high)), alpha = 0.2, fill ="steelblue" ) +
+   labs(x="Length of Stay" , y = "Risk of readmission")
+```
+
+### Shape of the effect of Operation time on readmission
+
+```{r}
+opt_grid <- seq(2, 600, 0.1)
+
+new_data <- dat.use[ 1:length(opt_grid),]
+for ( i in covariate_use){new_data[, which(colnames(new_data)==i)] <- new_data[1, which(colnames(new_data)==i)]}
+new_data$Operative_Time <- opt_grid
+
+#plot(opt_grid, predict(glm3, newdata = new_data,type = "response"), 
+#     xlab = "Operative Time", ylab ="Risk of readmission", type ="l")
+```
+
+
+```{r ,fig.width = 7, fig.height = 7}
+# alternative prediction plot
+pp= predict(glm3, newdata = new_data, se.fit=T)
+pre <- pp$fit
+pre.low <- pp$fit - 1.96*pp$se.fit
+pre.high <- pp$fit + 1.96*pp$se.fit
+
+out <- data.frame(los= opt_grid, Pred=inv_logit(pre), pre.low=inv_logit(pre.low), pre.high=inv_logit(pre.high) )
+
+ggplot(out, aes(x=los)) + 
+  geom_line(aes(y=Pred), colour="steelblue") + 
+  geom_ribbon(aes(ymin=(pre.low), ymax=(pre.high)), alpha = 0.2, fill ="steelblue" ) +
+   labs(x="Operative Time" , y = "Risk of readmission")
+```
+
+
+
+
+# Prediction Table 4
+
+```{r}
+new_dat <- dat_nsqip[1:4, match(covs_use, colnames(dat_nsqip))]
+```
+
+
+
+```{r}
+new_dat$Age <- c(55, 60, 60, 60 )
+new_dat$SEX <- c("female", "female", "male","male")
+new_dat$Elective_Surgery <-  c("Yes", "Yes", "No", "Yes")
+new_dat$Disease <- c("Colon_Cancer", "Rectal_Cancer", "DIVERTICULITIS", "ULCERATIVE_COLITIS")
+new_dat$Resection <- c("PARTIAL_COLECTOMY", "PROCTECTOMY", "PARTIAL_COLECTOMY", "POUCH")
+new_dat$Length_Of_Stay <- c(4, 7, 10, 2)
+new_dat$Major_Morbidity <- c("0", "1", "1", "1")
+new_dat$Hypertension_On_Medication <- c("No", "No", "Yes", "Yes")
+new_dat$DIABETES <- c("NO", "NO", "YES", "YES")
+#new_dat$STEROID <- c("No", "No", "No", "No")
+new_dat$SMOKing <- c("No", "No", "Yes", "Yes")
+new_dat$ASA_Class <- c("1", "1", "3", "3")
+new_dat$Operative_Time <- c(100,100, 600, 600)
+
+
+pred = predict(glm3, new_dat, type = "response") 
+
+tt <- predict(glm3, new_dat, type = "link", se.fit= T) 
+low = inv.logit(tt$fit + c(-1.96)*tt$se.fit)
+#inv.logit(tt$fit)
+up = inv.logit(tt$fit + c(1.96)*tt$se.fit)
+
+out = data.frame(rbind(t(new_dat), 'risk prediction (%)' = round(pred *100, 2),'95% CI' = paste0('[', round(low*100, 2), ", ", round(up*100, 2), "]")) )
+
+colnames(out) <- paste0("Patient", 1:4)
+pander::pander(out,  split.table = Inf)
+```
+
+
+
+

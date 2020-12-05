@@ -1,0 +1,5 @@
+load("/Users/kaiqiongzhao/Documents/Projects/Mohammed/App/dehydration_app/data/Pred_Model.rds")
+ls()
+ls()
+X
+ls()
